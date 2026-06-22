@@ -321,8 +321,19 @@ def agent_loop(messages: list, model: str) -> dict:
         turn += 1
 
         # Sliding window: keep first anchor + last 30 messages
+        # Must never split a tool_use/tool_result pair — that causes API 400 errors
         if len(messages) > 30:
-            messages = [messages[0]] + messages[-30:]
+            keep_from = len(messages) - 30
+            if keep_from > 0:
+                first_kept = messages[keep_from]
+                if first_kept.get("role") == "user" and isinstance(first_kept.get("content"), list):
+                    has_tool_results = any(
+                        isinstance(b, dict) and b.get("type") == "tool_result"
+                        for b in first_kept["content"]
+                    )
+                    if has_tool_results and messages[keep_from - 1].get("role") == "assistant":
+                        keep_from -= 1  # include the paired tool_use message
+            messages = [messages[0]] + messages[keep_from:]
             logger.debug("Sliding window applied, kept %d messages", len(messages))
 
         try:
