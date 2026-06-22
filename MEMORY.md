@@ -68,7 +68,14 @@
 - **`GITHUB_TOKEN`** in `.env` — used by `gh` CLI only, NOT for git operations
 - If a repo remote shows `https://`, fix immediately: `git remote set-url origin git@github.com:user/repo.git`
 
+## Hooks System
+- Config: `/root/miniagent/hooks.json`
+- Events: SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure
+- Handler: shell commands, JSON on stdin, exit code 2 = block, timeout 10s
+- Default example: PostToolUse on `write|edit` auto-commits to git
+
 ## Session Log
+- 2025-07-10: Added hooks system (hooks.json + dispatch in agent.py). 6 events, shell handlers.
 - 2025-06-22 20:10: Enforced SSH-only git auth, added rules 7/8/9 (auto-blog, no-leak, backup), aipulse blog backup to GitHub.
 - 2025-06-22: Replaced sliding window with compression-based context. Token threshold: 60k. Keep recent: 24 messages.
 - 2025-06-22: Fixed /stable push bug (added `git push origin main` and `git push origin --tags`).

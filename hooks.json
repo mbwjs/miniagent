@@ -1,0 +1,23 @@
+{
+  "_comment": "MiniAgent Hooks — shell commands triggered by lifecycle events. Exit code 2 = block.",
+  "hooks": {
+    "SessionStart": [],
+    "SessionEnd": [],
+    "UserPromptSubmit": [],
+    "PreToolUse": [
+      {
+        "_comment": "Example: block dangerous bash commands",
+        "matcher": "bash",
+        "command": "echo '{\"event\":\"PreToolUse\",\"action\":\"allow\"}'"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "_comment": "Example: auto-commit after file modifications",
+        "matcher": "write|edit",
+        "command": "cd /root/miniagent && git add -A && git diff --cached --quiet || git commit -m 'Hook: auto-commit after write/edit'"
+      }
+    ],
+    "PostToolUseFailure": []
+  }
+}

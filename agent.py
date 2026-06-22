@@ -59,6 +59,68 @@ def _check_ssh_remote(path: Path, repo_name: str):
 _check_ssh_remote(BLOG_DIR, "aipulse")
 _check_ssh_remote(WORKDIR, "miniagent")
 
+# ── Hooks Engine ───────────────────────────────────────
+HOOKS_FILE = WORKDIR / "hooks.json"
+HOOKS: dict = {}  # event_name -> list of {matcher, command}
+
+def load_hooks():
+    global HOOKS
+    if HOOKS_FILE.exists():
+        try:
+            cfg = json.loads(HOOKS_FILE.read_text())
+            HOOKS = cfg.get("hooks", {})
+            logger.info("Loaded hooks: %d event types", len(HOOKS))
+        except Exception as e:
+            logger.error("Failed to load hooks.json: %s", e)
+            HOOKS = {}
+    else:
+        HOOKS = {}
+
+def dispatch_hooks(event: str, context: dict) -> tuple[bool, list[str]]:
+    """Run all matching hooks for an event. Returns (allowed, messages).
+    allowed=False means blocked (exit code 2)."""
+    handlers = HOOKS.get(event, [])
+    if not handlers:
+        return True, []
+
+    ctx_json = json.dumps(context, ensure_ascii=False, default=str)
+    allowed = True
+    messages = []
+
+    for h in handlers:
+        matcher = h.get("matcher", "")
+        if matcher and event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
+            tool_name = context.get("tool_name", "")
+            if not re.search(matcher, tool_name):
+                continue
+
+        cmd = h.get("command", "")
+        if not cmd:
+            continue
+
+        try:
+            r = subprocess.run(
+                cmd, shell=True, input=ctx_json, capture_output=True, text=True,
+                timeout=10, cwd=WORKDIR
+            )
+            out = (r.stdout + r.stderr).strip()
+            if r.returncode == 2:
+                allowed = False
+                logger.warning("HOOK BLOCK %s: %s → %s", event, matcher, out[:200])
+                messages.append(f"🚫 Hook blocked: {out[:300]}")
+            else:
+                logger.debug("HOOK %s: %s → rc=%d %s", event, matcher, r.returncode, out[:100])
+                if out:
+                    messages.append(out[:300])
+        except subprocess.TimeoutExpired:
+            logger.warning("HOOK TIMEOUT %s: %s", event, matcher)
+        except Exception as e:
+            logger.warning("HOOK ERROR %s: %s → %s", event, matcher, e)
+
+    return allowed, messages
+
+load_hooks()
+
 # Blog config (VPS paths)
 BLOG_DIR = Path.home() / "aipulse"
 BLOG_DEPLOY = "/var/www/aitracker"
@@ -537,10 +599,22 @@ def agent_loop(messages: list, model: str) -> dict:
                 inp_preview = str({k: (str(v)[:60]+"...") if len(str(v))>60 else v for k,v in inp.items()})
                 print(f"\n{C['yellow']}  {icon} {name} {inp_preview}{C['reset']}")
 
+                # ── PreToolUse Hook ──
+                pre_ctx = {"event": "PreToolUse", "tool_name": name, "tool_input": inp}
+                pre_ok, pre_msgs = dispatch_hooks("PreToolUse", pre_ctx)
+                if not pre_ok:
+                    output = "Blocked by PreToolUse hook"
+                    for pm in pre_msgs:
+                        print(f"{C['red']}  {pm}{C['reset']}")
+                    logger.warning("TOOL %s BLOCKED by hook: %s", name, json.dumps(inp, ensure_ascii=False)[:200])
+                    results.append({"type": "tool_result", "tool_use_id": block.id, "content": output})
+                    continue
+
                 # Filter to only accepted params
                 if handler:
                     sig = inspect.signature(handler)
                     valid = {k: v for k, v in inp.items() if k in sig.parameters}
+                    tool_ok = True
                     try:
                         output = handler(**valid)
                         logger.info("TOOL %s %s → %s", name,
@@ -548,8 +622,15 @@ def agent_loop(messages: list, model: str) -> dict:
                                     output[:200])
                     except Exception as e:
                         output = f"Error: {e}"
+                        tool_ok = False
                         logger.error("TOOL %s %s ERROR: %s", name,
                                      json.dumps(inp, ensure_ascii=False)[:200], e)
+                    # ── PostToolUse / PostToolUseFailure Hooks ──
+                    post_ctx = {"event": "PostToolUse", "tool_name": name, "tool_input": inp, "tool_output": output[:500]}
+                    if tool_ok:
+                        dispatch_hooks("PostToolUse", post_ctx)
+                    else:
+                        dispatch_hooks("PostToolUseFailure", post_ctx)
                 else:
                     output = f"Unknown tool: {name}"
                     logger.warning("TOOL unknown: %s", name)
@@ -588,9 +669,13 @@ def main():
     print(f"  {C['dim']}blog:{C['reset']}  {BLOG_URL}")
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
     print(f"  {C['dim']}ctx:{C['reset']}   max {MAX_CONTEXT_TOKENS:,} tokens (compress @ 60k)")
+    print(f"  {C['dim']}hooks:{C['reset']} {len(HOOKS)} event types loaded")
     print()
-    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /compress /nohistory /stable /restore /memory /context | q to quit{C['reset']}")
+    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /compress /nohistory /stable /restore /memory /context /hooks | q to quit{C['reset']}")
     print()
+
+    # SessionStart hook
+    dispatch_hooks("SessionStart", {"event": "SessionStart", "timestamp": datetime.now(CST).isoformat()})
 
     history: list = []
     session_in, session_out = 0, 0
@@ -612,6 +697,7 @@ def main():
         if query.lower() in ("q", "exit", "quit"):
             cost_str = f"${session_cost:.6f}" if session_cost > 0 else "$0.00"
             logger.info("SESSION END %di/%do tokens cost=%s", session_in, session_out, cost_str)
+            dispatch_hooks("SessionEnd", {"event": "SessionEnd", "input_tokens": session_in, "output_tokens": session_out, "cost": cost_str, "turns": len(history)//2})
             print(f"{C['dim']}Bye! {session_in}i / {session_out}o tokens | cost: {cost_str}{C['reset']}")
             break
 
@@ -803,6 +889,28 @@ def main():
                 print(f"{C['dim']}── End ──{C['reset']}\n")
             else:
                 print(f"{C['dim']}No MEMORY.md file found.{C['reset']}\n")
+            continue
+
+        if query == "/hooks":
+            print(f"\n{C['bold']}── Hooks ──{C['reset']}")
+            total = 0
+            for event, handlers in HOOKS.items():
+                print(f"  {C['yellow']}{event}{C['reset']} ({len(handlers)} handlers)")
+                for i, h in enumerate(handlers):
+                    matcher = h.get("matcher", "*")
+                    cmd = h.get("command", "")[:80]
+                    print(f"    {C['dim']}[{i}] matcher={matcher!r} → {cmd}{'...' if len(h.get('command',''))>80 else ''}{C['reset']}")
+                    total += 1
+            print(f"\n  {C['dim']}Total: {total} handlers across {len(HOOKS)} events")
+            print(f"  Config: {HOOKS_FILE}{C['reset']}\n")
+            continue
+
+        # UserPromptSubmit hook
+        prompt_ok, prompt_msgs = dispatch_hooks("UserPromptSubmit", {"event": "UserPromptSubmit", "query": query})
+        for pm in prompt_msgs:
+            print(f"{C['dim']}🔔 {pm}{C['reset']}")
+        if not prompt_ok:
+            print(f"{C['red']}🚫 Prompt blocked by UserPromptSubmit hook{C['reset']}")
             continue
 
         history.append({"role": "user", "content": query})

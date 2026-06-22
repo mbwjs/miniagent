@@ -35,7 +35,14 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 - `/stable` → commit + force-tag `stable`, push
 - `/restore` → checkout `stable` agent.py, then restart
 - `/context` → show context overview (tokens, cost, files, memory state)
+- `/hooks` → show all registered hooks
 - Blog posts auto-backed: `publish_post` automatically git commit + push to `github.com/mbwjs/aipulse`
+
+## Hooks System
+- Config: `hooks.json` in repo root
+- Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`
+- Handlers: shell commands only (HTTP/LLM later). JSON context passed via stdin.
+- Exit code 2 = block. Timeout: 10s.
 
 ## Context
 - Compression-based: when >60k tokens, old messages are LLM-summarized (not dropped).
