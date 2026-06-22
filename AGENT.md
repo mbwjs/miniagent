@@ -13,6 +13,7 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 3. Search the web before writing about current events.
 4. Blog posts → use `publish_post` tool only.
 5. Keep answers brief. User sees your tool outputs.
+6. After modifying code: auto commit + push (commit message in English, concise).
 
 ## Key Paths
 - Repo: `/root/miniagent`
