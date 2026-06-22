@@ -6,16 +6,21 @@
     "UserPromptSubmit": [],
     "PreToolUse": [
       {
-        "_comment": "Example: block dangerous bash commands",
+        "_comment": "Block dangerous bash commands",
         "matcher": "bash",
-        "command": "echo '{\"event\":\"PreToolUse\",\"action\":\"allow\"}'"
+        "command": "python3 -c \"import sys,json; d=json.load(sys.stdin); cmd=d.get('tool_input',{}).get('command',''); sys.exit(0) if not any(k in cmd.lower() for k in ['rm -rf /','shutdown','reboot','mkfs.']) else sys.exit(2)\""
+      },
+      {
+        "_comment": "Secret scan before git commit — blocks if keys/tokens found in staged changes",
+        "matcher": "bash",
+        "command": "cd /root/miniagent && python3 secret_scan.py"
       }
     ],
     "PostToolUse": [
       {
-        "_comment": "Example: auto-commit after file modifications",
+        "_comment": "Auto-commit after file modifications (secret scan runs before commit)",
         "matcher": "write|edit",
-        "command": "cd /root/miniagent && git add -A && git diff --cached --quiet || git commit -m 'Hook: auto-commit after write/edit'"
+        "command": "cd /root/miniagent && python3 secret_scan.py && git add -A && git diff --cached --quiet || git commit -m 'Hook: auto-commit after write/edit'"
       }
     ],
     "PostToolUseFailure": []
