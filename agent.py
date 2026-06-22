@@ -443,7 +443,7 @@ def main():
     print(f"  {C['dim']}blog:{C['reset']}  {BLOG_URL}")
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
     print()
-    print(f"  {C['dim']}/clear /system /tokens /cost | /nohistory /stable /restore | q to quit{C['reset']}")
+    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /nohistory /stable /restore | q to quit{C['reset']}")
     print()
 
     history: list = []
@@ -475,6 +475,41 @@ def main():
             session_cost = 0.0
             turn_costs.clear()
             print(f"{C['dim']}🧹 History cleared{C['reset']}\n")
+            continue
+
+        if query in ("/help", "/h"):
+            print(f"""
+{C['bold']}╔══════════════════════════════════════╗{C['reset']}
+{C['bold']}║        MiniAgent 指令帮助            ║{C['reset']}
+{C['bold']}╚══════════════════════════════════════╝{C['reset']}
+
+{C['yellow']}内置命令:{C['reset']}
+  {C['green']}/help, /h{C['reset']}       显示此帮助
+  {C['green']}/clear{C['reset']}          清除会话历史 & token 计数器
+  {C['green']}/system{C['reset']}         显示 system prompt 和可用工具
+  {C['green']}/tokens{C['reset']}         当前会话 token 用量和费用
+  {C['green']}/cost{C['reset']}           逐轮费用明细
+  {C['green']}/nohistory{C['reset']}      开关：每轮对话独立（不携带上下文）
+  {C['green']}/stable{C['reset']}         git commit + tag 当前 agent.py 为 stable
+  {C['green']}/restore{C['reset']}        从 stable tag 恢复 agent.py（需重启）
+  {C['green']}q / exit / quit{C['reset']} 退出
+
+{C['yellow']}直接输入自然语言即可:{C['reset']}
+  搜东西 / 写代码 / 发博客 / 跑命令 …
+  例如：{C['dim']}"写一篇关于 GPT-5 的博客"  "搜特斯拉最新新闻"  "跑 df -h"{C['reset']}
+
+{C['yellow']}可用工具:{C['reset']}
+  {C['cyan']}bash{C['reset']}         执行 shell 命令
+  {C['cyan']}read{C['reset']}         读取文件（带行号）
+  {C['cyan']}write{C['reset']}        写入/覆盖文件
+  {C['cyan']}edit{C['reset']}         查找替换文件内容
+  {C['cyan']}glob{C['reset']}         按模式搜索文件
+  {C['cyan']}web_search{C['reset']}   搜索网页 (DuckDuckGo)
+  {C['cyan']}web_fetch{C['reset']}    抓取网页内容
+  {C['cyan']}publish_post{C['reset']} 发布博客到 {BLOG_URL}
+
+{C['dim']}blog: {BLOG_URL} | log: {LOG_FILE}{C['reset']}
+""")
             continue
 
         if query == "/system":
