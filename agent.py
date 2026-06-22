@@ -692,15 +692,23 @@ def main():
                         "-m", f"stable: {datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}"],
                        capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
-                # 3. Tag
+                # 3. Tags: rolling 'stable' + auto-increment 'vN'
                 sp.run(["git", "-C", agent_dir, "tag", "-f", "stable"],
                        capture_output=True, timeout=10)
-                # 4. Push commit + tag to remote
+                # Count existing version tags
+                existing = sp.run(["git", "-C", agent_dir, "tag", "-l", "v*"],
+                                  capture_output=True, text=True, timeout=5)
+                versions = [t.strip() for t in existing.stdout.splitlines() if t.strip().startswith("v")]
+                nums = [int(v[1:]) for v in versions if v[1:].isdigit()]
+                next_ver = f"v{max(nums) + 1}" if nums else "v1"
+                sp.run(["git", "-C", agent_dir, "tag", next_ver],
+                       capture_output=True, timeout=10)
+                # 4. Push commit + tags to remote
                 sp.run(["git", "-C", agent_dir, "push", "origin", "main"],
                        capture_output=True, timeout=15)
                 sp.run(["git", "-C", agent_dir, "push", "origin", "--tags"],
                        capture_output=True, timeout=15)
-                print(f"{C['dim']}✅ Stable version archived (commit + tag 'stable' + pushed){C['reset']}\n")
+                print(f"{C['dim']}✅ Stable {next_ver} archived (commit + tag 'stable' + {next_ver} + pushed){C['reset']}\n")
             else:
                 print(f"{C['dim']}ℹ️  {r.stdout.strip() or r.stderr.strip()}{C['reset']}\n")
             continue
