@@ -66,6 +66,20 @@ C = {"cyan":"\033[36m","green":"\033[32m","yellow":"\033[33m","red":"\033[31m",
      "dim":"\033[90m","reset":"\033[0m","bold":"\033[1m"}
 
 # ── System Prompt ───────────────────────────────────────
+AGENT_INSTRUCT = ""
+AGENT_MD = WORKDIR / "agent.md"
+if AGENT_MD.exists():
+    AGENT_INSTRUCT = AGENT_MD.read_text(encoding="utf-8")
+
+MEMORY_MD = WORKDIR / "AGENT.md"
+AGENT_MEMORY = ""
+if MEMORY_MD.exists():
+    AGENT_MEMORY = MEMORY_MD.read_text(encoding="utf-8")
+    lines = AGENT_MEMORY.splitlines()
+    if len(lines) > 200:
+        AGENT_MEMORY = "\n".join(lines[-200:])
+        logger.warning("AGENT.md >200 lines, truncated to last 200")
+
 SYSTEM = f"""You are a coding + writing agent on a VPS (AlmaLinux 9, {WORKDIR}).
 Use tools proactively. Write code, search the web, publish blog posts.
 
@@ -75,7 +89,15 @@ Rules:
 - For blog posts: use publish_post tool — it handles frontmatter + build + deploy.
 - Search the web before writing about current events.
 - Keep responses short — the user sees tool outputs.
-- Blog posts at {BLOG_URL}"""
+- Blog posts at {BLOG_URL}
+
+── Agent Instructions ({WORKDIR}/agent.md) ──
+{AGENT_INSTRUCT}
+── End Instructions ──
+
+── Persistent Memory ({WORKDIR}/AGENT.md) ──
+{AGENT_MEMORY}
+── End Memory ──"""
 
 # ── Tool Definitions ────────────────────────────────────
 TOOLS = [
@@ -443,7 +465,7 @@ def main():
     print(f"  {C['dim']}blog:{C['reset']}  {BLOG_URL}")
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
     print()
-    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /nohistory /stable /restore | q to quit{C['reset']}")
+    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /nohistory /stable /restore /memory | q to quit{C['reset']}")
     print()
 
     history: list = []
@@ -492,6 +514,7 @@ def main():
   {C['green']}/nohistory{C['reset']}      开关：每轮对话独立（不携带上下文）
   {C['green']}/stable{C['reset']}         git commit + tag 当前 agent.py 为 stable
   {C['green']}/restore{C['reset']}        从 stable tag 恢复 agent.py（需重启）
+  {C['green']}/memory{C['reset']}        显示 AGENT.md 记忆文件
   {C['green']}q / exit / quit{C['reset']} 退出
 
 {C['yellow']}直接输入自然语言即可:{C['reset']}
@@ -563,6 +586,16 @@ def main():
                 print(f"{C['red']}♻️  agent.py restored to 'stable'. Restart required!{C['reset']}\n")
             else:
                 print(f"{C['red']}❌ Restore failed: {r.stderr.strip()}{C['reset']}\n")
+            continue
+
+        if query == "/memory":
+            md = WORKDIR / "AGENT.md"
+            if md.exists():
+                print(f"\n{C['dim']}── AGENT.md ──{C['reset']}")
+                print(md.read_text(encoding="utf-8"))
+                print(f"{C['dim']}── End ──{C['reset']}\n")
+            else:
+                print(f"{C['dim']}No AGENT.md file found.{C['reset']}\n")
             continue
 
         history.append({"role": "user", "content": query})
