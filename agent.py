@@ -67,7 +67,7 @@ C = {"cyan":"\033[36m","green":"\033[32m","yellow":"\033[33m","red":"\033[31m",
 
 # ── System Prompt ───────────────────────────────────────
 AGENT_INSTRUCT = ""
-AGENT_MD = WORKDIR / "agent.md"
+AGENT_MD = WORKDIR / "AGENT.md"
 if AGENT_MD.exists():
     AGENT_INSTRUCT = AGENT_MD.read_text(encoding="utf-8")
 
@@ -91,7 +91,7 @@ Rules:
 - Keep responses short — the user sees tool outputs.
 - Blog posts at {BLOG_URL}
 
-── Agent Instructions ({WORKDIR}/agent.md) ──
+── Agent Instructions ({WORKDIR}/AGENT.md) ──
 {AGENT_INSTRUCT}
 ── End Instructions ──
 
@@ -246,9 +246,8 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
         return f"Error: {e}"
 
 def run_glob(pattern: str) -> str:
-    import glob as g
     try:
-        results = sorted(g.glob(pattern, root_dir=WORKDIR))
+        results = sorted(str(p) for p in WORKDIR.glob(pattern))
         return "\n".join(results) if results else "(no matches)"
     except Exception as e:
         return f"Error: {e}"
@@ -723,8 +722,8 @@ def main():
             bar = "█" * int(ctx_pct // 10) + "░" * (10 - int(ctx_pct // 10))
             cost_str = f"${session_cost:.6f}" if session_cost > 0 else "$0.00"
 
-            # agent.md stats
-            agent_md = WORKDIR / "agent.md"
+            # AGENT.md stats
+            agent_md = WORKDIR / "AGENT.md"
             agent_lines = len(agent_md.read_text().splitlines()) if agent_md.exists() else 0
 
             # MEMORY.md stats
@@ -748,8 +747,8 @@ def main():
   Compress @ 60k | Keep last {COMPRESS_KEEP_RECENT} msgs
   No-history: {'ON' if nohistory else 'OFF'}
 
-{C['yellow']}Instructions (agent.md):{C['reset']}
-  Lines: {agent_lines} | Path: {WORKDIR}/agent.md
+{C['yellow']}Instructions (AGENT.md):{C['reset']}
+  Lines: {agent_lines} | Path: {WORKDIR}/AGENT.md
 
 {C['yellow']}Memory (MEMORY.md):{C['reset']}
   Lines: {mem_lines}{mem_warn} | Path: {WORKDIR}/MEMORY.md
