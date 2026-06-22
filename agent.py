@@ -563,16 +563,24 @@ def main():
 
         if query == "/stable":
             import subprocess as sp
-            r = sp.run(["git", "-C", str(Path(__file__).resolve().parent),
-                        "add", "agent.py"],
-                       capture_output=True, text=True, timeout=10)
-            r = sp.run(["git", "-C", str(Path(__file__).resolve().parent),
-                        "commit", "-m", f"stable: {datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}"],
+            agent_dir = str(Path(__file__).resolve().parent)
+            # 1. Stage agent.py (even if unchanged, create commit for snapshot)
+            sp.run(["git", "-C", agent_dir, "add", "agent.py"],
+                   capture_output=True, text=True, timeout=10)
+            # 2. Commit
+            r = sp.run(["git", "-C", agent_dir, "commit",
+                        "-m", f"stable: {datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}"],
                        capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
-                sp.run(["git", "-C", str(Path(__file__).resolve().parent),
-                        "tag", "-f", "stable"], capture_output=True, timeout=10)
-                print(f"{C['dim']}✅ Stable version archived (commit + tag 'stable'){C['reset']}\n")
+                # 3. Tag
+                sp.run(["git", "-C", agent_dir, "tag", "-f", "stable"],
+                       capture_output=True, timeout=10)
+                # 4. Push commit + tag to remote
+                sp.run(["git", "-C", agent_dir, "push", "origin", "main"],
+                       capture_output=True, timeout=15)
+                sp.run(["git", "-C", agent_dir, "push", "origin", "--tags"],
+                       capture_output=True, timeout=15)
+                print(f"{C['dim']}✅ Stable version archived (commit + tag 'stable' + pushed){C['reset']}\n")
             else:
                 print(f"{C['dim']}ℹ️  {r.stdout.strip() or r.stderr.strip()}{C['reset']}\n")
             continue
