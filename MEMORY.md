@@ -61,7 +61,15 @@
 - **`git commit` rejects empty changes**: `/stable` shows stdout/stderr when this happens.
 - **AGENT.md vs MEMORY.md**: `AGENT.md` = instructions. `MEMORY.md` = persistent memory (this file).
 
+## Git Auth — CRITICAL
+- **SSH key**: `~/.ssh/id_ed25519` — public key registered on GitHub
+- **SSH config**: `~/.ssh/config` → `Host github.com / User git / IdentityFile ~/.ssh/id_ed25519`
+- **NEVER use HTTPS remotes**. Always `git@github.com:...` — HTTPS will prompt for password and fail.
+- **`GITHUB_TOKEN`** in `.env` — used by `gh` CLI only, NOT for git operations
+- If a repo remote shows `https://`, fix immediately: `git remote set-url origin git@github.com:user/repo.git`
+
 ## Session Log
+- 2025-06-22 20:10: Enforced SSH-only git auth, added rules 7/8/9 (auto-blog, no-leak, backup), aipulse blog backup to GitHub.
 - 2025-06-22: Replaced sliding window with compression-based context. Token threshold: 60k. Keep recent: 24 messages.
 - 2025-06-22: Fixed /stable push bug (added `git push origin main` and `git push origin --tags`).
 - 2025-06-22 earlier: Created dual memory files (AGENT.md + MEMORY.md), /memory command. Stable at a0c605e.

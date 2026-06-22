@@ -24,8 +24,14 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 - Logs: `/root/miniagent/agent.log`
 - Memory: `/root/miniagent/MEMORY.md` (persistent, auto-generated)
 
-## Git
-- Remote: `git@github.com:mbwjs/miniagent.git`
+## Git — SSH ONLY
+- **NEVER use HTTPS** for git remotes. Always `git@github.com:user/repo.git`.
+- SSH key: `~/.ssh/id_ed25519` (registered on GitHub)
+- SSH config: `~/.ssh/config` → `Host github.com / User git / IdentityFile ~/.ssh/id_ed25519`
+- MiniAgent remote: `git@github.com:mbwjs/miniagent.git`
+- Blog remote: `git@github.com:mbwjs/aipulse.git`
+- `GITHUB_TOKEN` env var is for `gh` CLI only, never for git operations.
+- If remote shows `https://` → fix immediately: `git remote set-url origin git@github.com:user/repo.git`
 - `/stable` → commit + force-tag `stable`, push
 - `/restore` → checkout `stable` agent.py, then restart
 - `/context` → show context overview (tokens, cost, files, memory state)

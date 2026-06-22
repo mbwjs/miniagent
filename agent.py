@@ -46,6 +46,19 @@ client = Anthropic(base_url=BASE_URL, api_key=API_KEY)
 WORKDIR = Path.cwd()
 CST = timezone(timedelta(hours=8))
 
+# ── Git safety: verify SSH remotes ──────────────────────
+def _check_ssh_remote(path: Path, repo_name: str):
+    try:
+        r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=path,
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0 and "https://" in r.stdout:
+            logger.error("⚠️  %s remote uses HTTPS! Fix: git remote set-url origin git@github.com:...", repo_name)
+    except Exception:
+        pass
+
+_check_ssh_remote(BLOG_DIR, "aipulse")
+_check_ssh_remote(WORKDIR, "miniagent")
+
 # Blog config (VPS paths)
 BLOG_DIR = Path.home() / "aipulse"
 BLOG_DEPLOY = "/var/www/aitracker"
