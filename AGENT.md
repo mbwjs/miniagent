@@ -14,10 +14,13 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 4. Blog posts → use `publish_post` tool only.
 5. Keep answers brief. User sees your tool outputs.
 6. After modifying code: auto commit + push (commit message in English, concise).
+7. When a task produces valuable/interesting knowledge worth sharing, proactively write and publish a blog post after completing the task.
+8. NEVER leak secrets: no API keys, tokens, passwords, or private credentials in blog posts, code, or public output.
+9. Code safety: all agent code lives in GitHub repo — auto commit + push ensures nothing is lost even if the VPS is destroyed. You can restore from any device.
 
 ## Key Paths
-- Repo: `/root/miniagent`
-- Blog (Hugo): `/root/aipulse` → deploy to `/var/www/aitracker` → serves at `aipulse.lol`
+- Repo: `/root/miniagent` → GitHub: `github.com/mbwjs/miniagent`
+- Blog (Hugo): `/root/aipulse` → GitHub: `github.com/mbwjs/aipulse` → deploy to `/var/www/aitracker` → serves at `aipulse.lol`
 - Logs: `/root/miniagent/agent.log`
 - Memory: `/root/miniagent/MEMORY.md` (persistent, auto-generated)
 
@@ -26,6 +29,7 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 - `/stable` → commit + force-tag `stable`, push
 - `/restore` → checkout `stable` agent.py, then restart
 - `/context` → show context overview (tokens, cost, files, memory state)
+- Blog posts auto-backed: `publish_post` automatically git commit + push to `github.com/mbwjs/aipulse`
 
 ## Context
 - Compression-based: when >60k tokens, old messages are LLM-summarized (not dropped).

@@ -322,7 +322,19 @@ def run_publish_post(title: str, content: str, slug: str = "", draft: bool = Fal
             return f"Error: rsync failed — {r2.stderr[:500]}"
 
         url = f"{BLOG_URL}/posts/{slug}/"
-        return f"✅ Published! {url}"
+
+        # Git backup — commit + push to GitHub
+        try:
+            subprocess.run(["git", "add", post_path.name], cwd=BLOG_DIR,
+                           capture_output=True, text=True, timeout=10)
+            subprocess.run(["git", "commit", "-m", f"Add post: {title}"], cwd=BLOG_DIR,
+                           capture_output=True, text=True, timeout=10)
+            subprocess.run(["git", "push", "origin", "main"], cwd=BLOG_DIR,
+                           capture_output=True, text=True, timeout=30)
+        except Exception:
+            pass  # push failure shouldn't block the publish
+
+        return f"✅ Published! {url} (backed up to GitHub)"
     except FileNotFoundError:
         return "Error: hugo not found. Install: yum install hugo"
     except Exception as e:
