@@ -2,7 +2,7 @@
 """
 MiniAgent — ReAct agent for VPS
   coding tools (bash/read/write/edit/glob) + web_search + web_fetch + publish_post
-  compression-based context management (LLM summarization, not sliding window)
+  pure context compression — no sliding window, LLM summarization only
 
 Usage: python3 agent.py
 """
@@ -368,8 +368,8 @@ def messages_tokens(msgs: list) -> int:
     return total
 
 def compress_context(messages: list) -> list:
-    """Compress old messages into an LLM-generated summary, keep recent ones intact.
-    Guard: never split tool_use/tool_result pairs."""
+    """Pure compression: summarize old messages via LLM, keep recent ones intact.
+    No sliding window / hard cutoff — only compression. Pairs are kept atomic."""
     if len(messages) <= COMPRESS_KEEP_RECENT + 6:
         return messages
 
@@ -408,7 +408,7 @@ def compress_context(messages: list) -> list:
                     elif t == "tool_result":
                         conv_lines.append(f"[tool_result]: {str(b.get('content', ''))[:150]}")
 
-    summary_input = "Summarize this conversation history in concise bullet points. Focus on: what was asked, decisions made, files changed, errors encountered, current state. Max 10 bullets, keep it tight.\n\n" + "\n".join(conv_lines[-200:])  # last 200 lines max for summary input
+    summary_input = "Summarize this conversation history in concise bullet points. Focus on: what was asked, decisions made, files changed, errors encountered, current state. Max 10 bullets, keep it tight.\n\n" + "\n".join(conv_lines[-200:])
 
     logger.info("Compressing %d messages → summary...", len(to_compress))
 
@@ -428,9 +428,9 @@ def compress_context(messages: list) -> list:
         comp_out = resp.usage.output_tokens
         logger.info("Compression done: +%di +%do → %d chars summary", comp_in, comp_out, len(summary))
     except Exception as e:
-        logger.warning("Compression API call failed: %s, using fallback", e)
-        summary = f"(Compressed {len(to_compress)} messages — summarization failed)"
-        comp_in = comp_out = 0
+        logger.warning("Compression API call failed: %s, will retry next cycle", e)
+        # Keep messages intact — compression will be retried next turn
+        return messages
 
     # Build compressed message list
     compressed = [messages[0]]  # anchor (first user message)
@@ -451,7 +451,6 @@ def compress_context(messages: list) -> list:
 
 def agent_loop(messages: list, model: str) -> dict:
     total_in, total_out = 0, 0
-    comp_in_total, comp_out_total = 0, 0
     turn = 0
 
     while True:
@@ -462,17 +461,6 @@ def agent_loop(messages: list, model: str) -> dict:
         if est_tokens > MAX_CONTEXT_TOKENS:
             logger.info("Token estimate %d > %d, compressing...", est_tokens, MAX_CONTEXT_TOKENS)
             messages = compress_context(messages)
-            # After compression, estimate again — if still too high, fallback to hard cutoff
-            if messages_tokens(messages) > MAX_CONTEXT_TOKENS * 1.2:
-                # Hard cutoff as last resort (preserving pairs)
-                keep_from = len(messages) - COMPRESS_KEEP_RECENT
-                first_kept = messages[keep_from]
-                if first_kept.get("role") == "user" and isinstance(first_kept.get("content"), list):
-                    has_tr = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in first_kept["content"])
-                    if has_tr and messages[keep_from - 1].get("role") == "assistant":
-                        keep_from -= 1
-                messages = [messages[0]] + messages[keep_from:]
-                logger.warning("Hard cutoff applied, kept %d messages", len(messages))
 
         try:
             response = client.messages.create(
@@ -505,8 +493,10 @@ def agent_loop(messages: list, model: str) -> dict:
         # Done if no tool calls
         if response.stop_reason != "tool_use":
             cost = calc_cost(model, total_in, total_out)
+            ctx_tokens = messages_tokens(messages)
+            ctx_pct = ctx_tokens / MAX_CONTEXT_TOKENS * 100
             return {"input_tokens": total_in, "output_tokens": total_out,
-                    "cost": cost, "turns": turn}
+                    "cost": cost, "turns": turn, "context_pct": ctx_pct}
 
         # Execute tools
         results = []
@@ -573,8 +563,9 @@ def main():
     print(f"  {C['dim']}cwd:{C['reset']}   {WORKDIR}")
     print(f"  {C['dim']}blog:{C['reset']}  {BLOG_URL}")
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
+    print(f"  {C['dim']}ctx:{C['reset']}   max {MAX_CONTEXT_TOKENS:,} tokens (compress @ 60k)")
     print()
-    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /nohistory /stable /restore /memory | q to quit{C['reset']}")
+    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /compress /nohistory /stable /restore /memory | q to quit{C['reset']}")
     print()
 
     history: list = []
@@ -621,6 +612,7 @@ def main():
   {C['green']}/tokens{C['reset']}         当前会话 token 用量和费用
   {C['green']}/cost{C['reset']}           逐轮费用明细
   {C['green']}/nohistory{C['reset']}      开关：每轮对话独立（不携带上下文）
+  {C['green']}/compress{C['reset']}       手动压缩上下文（LLM 摘要旧消息）
   {C['green']}/stable{C['reset']}         git commit + tag 当前 agent.py 为 stable
   {C['green']}/restore{C['reset']}        从 stable tag 恢复 agent.py（需重启）
   {C['green']}/memory{C['reset']}        显示 AGENT.md 记忆文件
@@ -652,7 +644,11 @@ def main():
 
         if query == "/tokens":
             cost_str = f"${session_cost:.6f}" if session_cost > 0 else "$0.00"
-            print(f"{C['dim']}Session: {session_in}i / {session_out}o | cost: {cost_str}{C['reset']}\n")
+            ctx_tokens = messages_tokens(history)
+            ctx_pct = ctx_tokens / MAX_CONTEXT_TOKENS * 100
+            bar = "█" * int(ctx_pct // 10) + "░" * (10 - int(ctx_pct // 10))
+            print(f"{C['dim']}Session: {session_in}i / {session_out}o | cost: {cost_str}")
+            print(f"Context: {bar} {ctx_tokens} / {MAX_CONTEXT_TOKENS} tokens ({ctx_pct:.0f}%){C['reset']}\n")
             continue
 
         if query == "/cost":
@@ -668,6 +664,21 @@ def main():
             nohistory = not nohistory
             status = "ON (each query fresh)" if nohistory else "OFF (normal)"
             print(f"{C['dim']}🔁 No-history mode: {status}{C['reset']}\n")
+            continue
+
+        if query == "/compress":
+            if len(history) < 10:
+                print(f"{C['dim']}⚠️  Too few messages ({len(history)}) — need at least 10{C['reset']}\n")
+                continue
+            est_before = messages_tokens(history)
+            print(f"{C['dim']}🧠 Compressing... (est {est_before} tokens over {len(history)} msgs){C['reset']}")
+            history = compress_context(history)
+            est_after = messages_tokens(history)
+            saved = est_before - est_after
+            pct = (saved / est_before * 100) if est_before > 0 else 0
+            ctx_pct_after = est_after / MAX_CONTEXT_TOKENS * 100
+            print(f"{C['dim']}✅ Compressed: {len(history)} msgs, ~{est_after}t ({ctx_pct_after:.0f}% ctx) (saved ~{saved}t, -{pct:.0f}%){C['reset']}\n")
+            logger.info("Manual compression: %d→%d tokens", est_before, est_after)
             continue
 
         if query == "/stable":
@@ -732,9 +743,12 @@ def main():
             logger.info("TURN %d turns +%di/+%do cost=%s",
                         result["turns"], result["input_tokens"],
                         result["output_tokens"], cost_display)
+            ctx_pct = result.get("context_pct", 0)
+            bar = "█" * int(ctx_pct // 10) + "░" * (10 - int(ctx_pct // 10))
             print(f"\n{C['dim']}[{result['turns']} turns, "
                   f"+{result['input_tokens']}i / +{result['output_tokens']}o"
-                  f" | cost: {cost_display}]{C['reset']}\n")
+                  f" | cost: {cost_display}"
+                  f" | ctx: {bar} {ctx_pct:.0f}%]{C['reset']}\n")
 
         if nohistory:
             history.clear()

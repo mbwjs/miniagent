@@ -28,6 +28,7 @@ Type your query and the agent will use tools (bash, read, write, edit, glob, web
 
 | Command | What it does |
 |---|---|
+| `/help` / `/h` | Show full help |
 | `/clear` | Clear session history & token counters |
 | `/system` | Show the system prompt and available tools |
 | `/tokens` | Show current session token usage & cost |
