@@ -71,14 +71,14 @@ AGENT_MD = WORKDIR / "agent.md"
 if AGENT_MD.exists():
     AGENT_INSTRUCT = AGENT_MD.read_text(encoding="utf-8")
 
-MEMORY_MD = WORKDIR / "AGENT.md"
+MEMORY_MD = WORKDIR / "MEMORY.md"
 AGENT_MEMORY = ""
 if MEMORY_MD.exists():
     AGENT_MEMORY = MEMORY_MD.read_text(encoding="utf-8")
     lines = AGENT_MEMORY.splitlines()
     if len(lines) > 200:
         AGENT_MEMORY = "\n".join(lines[-200:])
-        logger.warning("AGENT.md >200 lines, truncated to last 200")
+        logger.warning("MEMORY.md >200 lines, truncated to last 200")
 
 SYSTEM = f"""You are a coding + writing agent on a VPS (AlmaLinux 9, {WORKDIR}).
 Use tools proactively. Write code, search the web, publish blog posts.
@@ -95,7 +95,7 @@ Rules:
 {AGENT_INSTRUCT}
 ── End Instructions ──
 
-── Persistent Memory ({WORKDIR}/AGENT.md) ──
+── Persistent Memory ({WORKDIR}/MEMORY.md) ──
 {AGENT_MEMORY}
 ── End Memory ──"""
 
@@ -565,7 +565,7 @@ def main():
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
     print(f"  {C['dim']}ctx:{C['reset']}   max {MAX_CONTEXT_TOKENS:,} tokens (compress @ 60k)")
     print()
-    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /compress /nohistory /stable /restore /memory | q to quit{C['reset']}")
+    print(f"  {C['dim']}/help /h /clear /system /tokens /cost | /compress /nohistory /stable /restore /memory /context | q to quit{C['reset']}")
     print()
 
     history: list = []
@@ -615,7 +615,8 @@ def main():
   {C['green']}/compress{C['reset']}       手动压缩上下文（LLM 摘要旧消息）
   {C['green']}/stable{C['reset']}         git commit + tag 当前 agent.py 为 stable
   {C['green']}/restore{C['reset']}        从 stable tag 恢复 agent.py（需重启）
-  {C['green']}/memory{C['reset']}        显示 AGENT.md 记忆文件
+  {C['green']}/memory{C['reset']}        显示 MEMORY.md 记忆文件
+  {C['green']}/context{C['reset']}       上下文总览（token/费用/压缩/文件状态）
   {C['green']}q / exit / quit{C['reset']} 退出
 
 {C['yellow']}直接输入自然语言即可:{C['reset']}
@@ -716,14 +717,60 @@ def main():
                 print(f"{C['red']}❌ Restore failed: {r.stderr.strip()}{C['reset']}\n")
             continue
 
+        if query == "/context":
+            ctx_tokens = messages_tokens(history)
+            ctx_pct = ctx_tokens / MAX_CONTEXT_TOKENS * 100
+            bar = "█" * int(ctx_pct // 10) + "░" * (10 - int(ctx_pct // 10))
+            cost_str = f"${session_cost:.6f}" if session_cost > 0 else "$0.00"
+
+            # agent.md stats
+            agent_md = WORKDIR / "agent.md"
+            agent_lines = len(agent_md.read_text().splitlines()) if agent_md.exists() else 0
+
+            # MEMORY.md stats
+            mem_md = WORKDIR / "MEMORY.md"
+            mem_lines = len(mem_md.read_text().splitlines()) if mem_md.exists() else 0
+            mem_warn = " ⚠️ >200" if mem_lines > 200 else ""
+
+            print(f"""
+{C['bold']}╔══════════════════════════════════════╗{C['reset']}
+{C['bold']}║        🧠 Context Overview           ║{C['reset']}
+{C['bold']}╚══════════════════════════════════════╝{C['reset']}
+
+{C['yellow']}Session:{C['reset']}
+  Model:     {MODEL}
+  Turns:     {len(history)//2} (msgs: {len(history)})
+  Tokens:    {session_in}i / {session_out}o
+  Cost:      {cost_str}
+
+{C['yellow']}Context Window:{C['reset']}
+  [{bar}] {ctx_tokens:,} / {MAX_CONTEXT_TOKENS:,} tokens ({ctx_pct:.0f}%)
+  Compress @ 60k | Keep last {COMPRESS_KEEP_RECENT} msgs
+  No-history: {'ON' if nohistory else 'OFF'}
+
+{C['yellow']}Instructions (agent.md):{C['reset']}
+  Lines: {agent_lines} | Path: {WORKDIR}/agent.md
+
+{C['yellow']}Memory (MEMORY.md):{C['reset']}
+  Lines: {mem_lines}{mem_warn} | Path: {WORKDIR}/MEMORY.md
+
+{C['yellow']}Blog:{C['reset']}
+  Source: {BLOG_DIR}
+  Deploy: {BLOG_DEPLOY}
+  URL:    {BLOG_URL}
+
+{C['dim']}Use /system for full prompt, /memory for MEMORY.md contents{C['reset']}
+""")
+            continue
+
         if query == "/memory":
-            md = WORKDIR / "AGENT.md"
+            md = WORKDIR / "MEMORY.md"
             if md.exists():
-                print(f"\n{C['dim']}── AGENT.md ──{C['reset']}")
+                print(f"\n{C['dim']}── MEMORY.md ──{C['reset']}")
                 print(md.read_text(encoding="utf-8"))
                 print(f"{C['dim']}── End ──{C['reset']}\n")
             else:
-                print(f"{C['dim']}No AGENT.md file found.{C['reset']}\n")
+                print(f"{C['dim']}No MEMORY.md file found.{C['reset']}\n")
             continue
 
         history.append({"role": "user", "content": query})

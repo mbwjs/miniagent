@@ -18,12 +18,13 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 - Repo: `/root/miniagent`
 - Blog (Hugo): `/root/aipulse` → deploy to `/var/www/aitracker` → serves at `aipulse.lol`
 - Logs: `/root/miniagent/agent.log`
-- Memory: `/root/miniagent/AGENT.md` (shared memory, also injected)
+- Memory: `/root/miniagent/MEMORY.md` (persistent, auto-generated)
 
 ## Git
 - Remote: `git@github.com:mbwjs/miniagent.git`
 - `/stable` → commit + force-tag `stable`, push
 - `/restore` → checkout `stable` agent.py, then restart
+- `/context` → show context overview (tokens, cost, files, memory state)
 
 ## Context
 - Compression-based: when >60k tokens, old messages are LLM-summarized (not dropped).
