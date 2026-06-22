@@ -25,6 +25,10 @@ You have tools: bash, read, write, edit, glob, web_search, web_fetch, publish_po
 - `/stable` → commit + force-tag `stable`, push
 - `/restore` → checkout `stable` agent.py, then restart
 
+## Context
+- Compression-based: when >60k tokens, old messages are LLM-summarized (not dropped).
+- Keeps: first anchor + compressed summary + last 24 messages.
+
 ## Notes
 - Environment: `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` are set as env vars.
 - Default model: `deepseek-v4-pro` (cheap). `claude-sonnet-4-6` available.

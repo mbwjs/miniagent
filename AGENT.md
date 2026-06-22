@@ -1,7 +1,7 @@
 # MiniAgent — Persistent Memory
 
 > Auto-generated. Keep <200 lines; if exceeded, compress with summaries.
-> Last update: 2025-06-22 session
+> Last update: 2025-06-22 (compression engine installed)
 
 ## Critical Paths
 | What | Path |
@@ -24,13 +24,21 @@
 ## Git
 - Remote: `git@github.com:mbwjs/miniagent.git` (SSH key configured)
 - `/stable` → `git add agent.py` → commit → `tag -f stable` → **push origin main + push --tags**
-- `/restore` → `git checkout stable -- agent.py` (then restart)
-- `/nohistory` → reset conversation (no carry-over)
+- `/restore` → `git checkout stable -- agent.py` (then restart agent)
+- `/nohistory` → reset conversation each turn (no carry-over)
 
 ## Blog (Hugo)
 - Theme: `hugo-coder` (check `/root/aipulse/themes/`)
 - Build: `hugo --source /root/aipulse --destination /var/www/aitracker`
 - `publish_post` tool handles frontmatter + build + deploy automatically
+
+## Context Management (v2 — Compression)
+- **NO SLIDING WINDOW** — old approach dropped messages, causing amnesia
+- New: when estimated tokens > 60,000, LLM compresses old messages into a bullet summary
+- Keeps: first message (anchor) + compressed summary + last 24 messages
+- Compression calls a small API request (max 400 tokens output)
+- Fallback: if compression fails or still too large → hard cutoff preserving tool_use/tool_result pairs
+- agent.md = instructions (loaded into system prompt). AGENT.md = this file (persistent memory).
 
 ## Core Rules (for agent)
 1. Act directly — no pre-explanation.
@@ -47,11 +55,12 @@
 | claude-sonnet-4-6 | $3.00 | $15.00 |
 
 ## Known Issues / Lessons Learned
-- **Sliding window causes amnesia**: Context older than ~15 turns gets dropped. I may forget what user asked earlier. Check AGENT.md or ask user.
-- **`/stable` bug fixed**: Old code didn't `git push` after commit+tag. Now pushes both `main` and `--tags`.
-- **`git commit` rejects empty changes**: If agent.py hasn't been modified, commit fails. `/stable` now handles this gracefully.
-- **agent.md vs AGENT.md**: `agent.md` = instructions loaded into system prompt at boot. `AGENT.md` = persistent memory (this file). Both injected.
+- **Compression replaces sliding window** (2025-06-22): Old sliding window caused amnesia after ~15 turns. Now LLM summarizes old context.
+- **`/stable` push bug fixed**: Old code didn't `git push` after commit+tag. Now pushes both `main` and `--tags`.
+- **`git commit` rejects empty changes**: `/stable` shows stdout/stderr when this happens.
+- **agent.md vs AGENT.md**: `agent.md` = instructions. `AGENT.md` = persistent memory (this file).
 
 ## Session Log
-- 2025-06-22: Created AGENT.md, agent.md. Fixed /stable push bug. stable tag at a0c605e (feat: dual memory files, /memory command).
-- 2025-06-22 earlier: Initial setup, stable tag created at bcb65c7.
+- 2025-06-22: Replaced sliding window with compression-based context. Token threshold: 60k. Keep recent: 24 messages.
+- 2025-06-22: Fixed /stable push bug (added `git push origin main` and `git push origin --tags`).
+- 2025-06-22 earlier: Created dual memory files (agent.md + AGENT.md), /memory command. Stable at a0c605e.

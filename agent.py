@@ -2,9 +2,9 @@
 """
 MiniAgent — ReAct agent for VPS
   coding tools (bash/read/write/edit/glob) + web_search + web_fetch + publish_post
-  sliding window context management
+  compression-based context management (LLM summarization, not sliding window)
 
-Usage: python3 agent_vps.py
+Usage: python3 agent.py
 """
 from __future__ import annotations
 import os, sys, subprocess, json, re, urllib.request, urllib.parse, inspect, logging
@@ -340,30 +340,139 @@ TOOL_HANDLERS = {
     "publish_post": run_publish_post,
 }
 
+# ── Context Compression ─────────────────────────────────
+
+MAX_CONTEXT_TOKENS = 60_000  # trigger compression at ~60k estimated tokens
+COMPRESS_KEEP_RECENT = 24    # keep last N messages uncompressed
+
+def estimate_tokens(text: str) -> int:
+    """Rough: ~4 chars per token."""
+    return len(text) // 4
+
+def messages_tokens(msgs: list) -> int:
+    """Estimate total tokens across all messages."""
+    total = 0
+    for m in msgs:
+        content = m.get("content", "")
+        if isinstance(content, str):
+            total += estimate_tokens(content)
+        elif isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict):
+                    if b.get("type") == "text":
+                        total += estimate_tokens(b.get("text", ""))
+                    elif b.get("type") == "tool_use":
+                        total += estimate_tokens(json.dumps(b.get("input", {})))
+                    elif b.get("type") == "tool_result":
+                        total += estimate_tokens(str(b.get("content", "")))
+    return total
+
+def compress_context(messages: list) -> list:
+    """Compress old messages into an LLM-generated summary, keep recent ones intact.
+    Guard: never split tool_use/tool_result pairs."""
+    if len(messages) <= COMPRESS_KEEP_RECENT + 6:
+        return messages
+
+    keep_from = len(messages) - COMPRESS_KEEP_RECENT
+    # Safety: don't split tool_use/tool_result pairs
+    first_kept = messages[keep_from]
+    if first_kept.get("role") == "user" and isinstance(first_kept.get("content"), list):
+        has_tool_results = any(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in first_kept["content"]
+        )
+        if has_tool_results and messages[keep_from - 1].get("role") == "assistant":
+            keep_from -= 1
+
+    to_compress = messages[1:keep_from]  # skip first anchor message
+    recent = messages[keep_from:]
+
+    if len(to_compress) < 4:
+        return messages  # too little to compress
+
+    # Build a textual representation of the old messages for summarization
+    conv_lines = []
+    for m in to_compress:
+        role = m.get("role", "?")
+        content = m.get("content", "")
+        if isinstance(content, str):
+            conv_lines.append(f"[{role}]: {content[:300]}")
+        elif isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict):
+                    t = b.get("type", "")
+                    if t == "text":
+                        conv_lines.append(f"[{role} text]: {b.get('text', '')[:200]}")
+                    elif t == "tool_use":
+                        conv_lines.append(f"[{role} tool]: {b.get('name', '?')}({json.dumps(b.get('input', {}))[:150]})")
+                    elif t == "tool_result":
+                        conv_lines.append(f"[tool_result]: {str(b.get('content', ''))[:150]}")
+
+    summary_input = "Summarize this conversation history in concise bullet points. Focus on: what was asked, decisions made, files changed, errors encountered, current state. Max 10 bullets, keep it tight.\n\n" + "\n".join(conv_lines[-200:])  # last 200 lines max for summary input
+
+    logger.info("Compressing %d messages → summary...", len(to_compress))
+
+    try:
+        resp = client.messages.create(
+            model=MODEL,
+            system="You are a context compressor. Output ONLY a bullet-list summary. No preamble, no fluff.",
+            messages=[{"role": "user", "content": summary_input}],
+            max_tokens=400,
+        )
+        summary_text = ""
+        for block in resp.content:
+            if block.type == "text":
+                summary_text += block.text
+        summary = summary_text.strip()
+        comp_in = resp.usage.input_tokens
+        comp_out = resp.usage.output_tokens
+        logger.info("Compression done: +%di +%do → %d chars summary", comp_in, comp_out, len(summary))
+    except Exception as e:
+        logger.warning("Compression API call failed: %s, using fallback", e)
+        summary = f"(Compressed {len(to_compress)} messages — summarization failed)"
+        comp_in = comp_out = 0
+
+    # Build compressed message list
+    compressed = [messages[0]]  # anchor (first user message)
+    compressed.append({
+        "role": "user",
+        "content": f"[🧠 Compressed context — {len(to_compress)} earlier messages summarized (+{comp_in}i/+{comp_out}o compression cost)]:\n\n{summary}"
+    })
+    compressed.append({
+        "role": "assistant",
+        "content": "Got it. Continuing with full context of recent messages."
+    })
+    compressed.extend(recent)
+
+    logger.debug("Compressed: %d → %d messages", len(messages), len(compressed))
+    return compressed
+
 # ── Core Loop ───────────────────────────────────────────
 
 def agent_loop(messages: list, model: str) -> dict:
     total_in, total_out = 0, 0
+    comp_in_total, comp_out_total = 0, 0
     turn = 0
 
     while True:
         turn += 1
 
-        # Sliding window: keep first anchor + last 30 messages
-        # Must never split a tool_use/tool_result pair — that causes API 400 errors
-        if len(messages) > 30:
-            keep_from = len(messages) - 30
-            if keep_from > 0:
+        # Compression: if estimated tokens exceed threshold, compress old messages
+        est_tokens = messages_tokens(messages)
+        if est_tokens > MAX_CONTEXT_TOKENS:
+            logger.info("Token estimate %d > %d, compressing...", est_tokens, MAX_CONTEXT_TOKENS)
+            messages = compress_context(messages)
+            # After compression, estimate again — if still too high, fallback to hard cutoff
+            if messages_tokens(messages) > MAX_CONTEXT_TOKENS * 1.2:
+                # Hard cutoff as last resort (preserving pairs)
+                keep_from = len(messages) - COMPRESS_KEEP_RECENT
                 first_kept = messages[keep_from]
                 if first_kept.get("role") == "user" and isinstance(first_kept.get("content"), list):
-                    has_tool_results = any(
-                        isinstance(b, dict) and b.get("type") == "tool_result"
-                        for b in first_kept["content"]
-                    )
-                    if has_tool_results and messages[keep_from - 1].get("role") == "assistant":
-                        keep_from -= 1  # include the paired tool_use message
-            messages = [messages[0]] + messages[keep_from:]
-            logger.debug("Sliding window applied, kept %d messages", len(messages))
+                    has_tr = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in first_kept["content"])
+                    if has_tr and messages[keep_from - 1].get("role") == "assistant":
+                        keep_from -= 1
+                messages = [messages[0]] + messages[keep_from:]
+                logger.warning("Hard cutoff applied, kept %d messages", len(messages))
 
         try:
             response = client.messages.create(
