@@ -47,7 +47,7 @@ WORKDIR = Path.cwd()
 CST = timezone(timedelta(hours=8))
 
 # Blog config (VPS paths)
-BLOG_DIR = Path.home() / "aipulse-hugo"
+BLOG_DIR = Path.home() / "aipulse"
 BLOG_DEPLOY = "/var/www/aitracker"
 BLOG_URL = "https://aipulse.lol"
 
