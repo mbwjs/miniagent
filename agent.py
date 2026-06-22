@@ -273,7 +273,14 @@ def run_publish_post(title: str, content: str, slug: str = "", draft: bool = Fal
 
         # Frontmatter
         date_str = datetime.now(CST).strftime("%Y-%m-%dT%H:%M:%S+08:00")
-        fm = f"---\ndate: '{date_str}'\ndraft: {str(draft).lower()}\ntitle: '{title}'\n---\n\n"
+        fm = (
+            f"---\n"
+            f"slug: \"{slug}\"\n"
+            f"date: '{date_str}'\n"
+            f"draft: {str(draft).lower()}\n"
+            f"title: '{title}'\n"
+            f"---\n\n"
+        )
         full = fm + content
 
         # Write post
@@ -436,13 +443,14 @@ def main():
     print(f"  {C['dim']}blog:{C['reset']}  {BLOG_URL}")
     print(f"  {C['dim']}log:{C['reset']}   {LOG_FILE}")
     print()
-    print(f"  {C['dim']}/clear /system /tokens /cost | q to quit{C['reset']}")
+    print(f"  {C['dim']}/clear /system /tokens /cost | /nohistory /stable /restore | q to quit{C['reset']}")
     print()
 
     history: list = []
     session_in, session_out = 0, 0
     session_cost = 0.0
     turn_costs: list[float] = []
+    nohistory: bool = False  # when True, each query is a fresh start
 
     while True:
         try:
@@ -489,6 +497,39 @@ def main():
                 print(f"{C['dim']}  Total: ${session_cost:.6f}{C['reset']}\n")
             continue
 
+        if query == "/nohistory":
+            nohistory = not nohistory
+            status = "ON (each query fresh)" if nohistory else "OFF (normal)"
+            print(f"{C['dim']}🔁 No-history mode: {status}{C['reset']}\n")
+            continue
+
+        if query == "/stable":
+            import subprocess as sp
+            r = sp.run(["git", "-C", str(Path(__file__).resolve().parent),
+                        "add", "agent.py"],
+                       capture_output=True, text=True, timeout=10)
+            r = sp.run(["git", "-C", str(Path(__file__).resolve().parent),
+                        "commit", "-m", f"stable: {datetime.now(CST).strftime('%Y-%m-%d %H:%M:%S')}"],
+                       capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                sp.run(["git", "-C", str(Path(__file__).resolve().parent),
+                        "tag", "-f", "stable"], capture_output=True, timeout=10)
+                print(f"{C['dim']}✅ Stable version archived (commit + tag 'stable'){C['reset']}\n")
+            else:
+                print(f"{C['dim']}ℹ️  {r.stdout.strip() or r.stderr.strip()}{C['reset']}\n")
+            continue
+
+        if query == "/restore":
+            import subprocess as sp
+            agent_dir = str(Path(__file__).resolve().parent)
+            r = sp.run(["git", "-C", agent_dir, "checkout", "stable", "--", "agent.py"],
+                       capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                print(f"{C['red']}♻️  agent.py restored to 'stable'. Restart required!{C['reset']}\n")
+            else:
+                print(f"{C['red']}❌ Restore failed: {r.stderr.strip()}{C['reset']}\n")
+            continue
+
         history.append({"role": "user", "content": query})
         logger.info("USER %s", query[:300])
         result = agent_loop(history, MODEL)
@@ -509,6 +550,10 @@ def main():
             print(f"\n{C['dim']}[{result['turns']} turns, "
                   f"+{result['input_tokens']}i / +{result['output_tokens']}o"
                   f" | cost: {cost_display}]{C['reset']}\n")
+
+        if nohistory:
+            history.clear()
+            logger.debug("No-history: cleared history")
 
 
 if __name__ == "__main__":
