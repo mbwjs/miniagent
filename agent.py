@@ -80,6 +80,7 @@ TOOLS = [
             "properties": {
                 "path": {"type": "string"},
                 "limit": {"type": "integer", "description": "Max lines (optional)"},
+                "offset": {"type": "integer", "description": "Start line number (optional, 1-based)"},
             },
             "required": ["path"],
         },
