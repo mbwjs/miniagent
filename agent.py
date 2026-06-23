@@ -46,6 +46,11 @@ client = Anthropic(base_url=BASE_URL, api_key=API_KEY)
 WORKDIR = Path.cwd()
 CST = timezone(timedelta(hours=8))
 
+# Blog config (VPS paths)
+BLOG_DIR = Path.home() / "aipulse"
+BLOG_DEPLOY = "/var/www/aitracker"
+BLOG_URL = "https://aipulse.lol"
+
 # ── Git safety: verify SSH remotes ──────────────────────
 def _check_ssh_remote(path: Path, repo_name: str):
     try:
@@ -120,11 +125,6 @@ def dispatch_hooks(event: str, context: dict) -> tuple[bool, list[str]]:
     return allowed, messages
 
 load_hooks()
-
-# Blog config (VPS paths)
-BLOG_DIR = Path.home() / "aipulse"
-BLOG_DEPLOY = "/var/www/aitracker"
-BLOG_URL = "https://aipulse.lol"
 
 # ── Pricing ─────────────────────────────────────────────
 PRICING = {
