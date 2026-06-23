@@ -75,6 +75,7 @@
 - Default example: PostToolUse on `write|edit` auto-commits to git
 
 ## Session Log
+- 2026-06-23: Added balance alert: `check_balance.py` + SessionStart hook + `/balance` command. Warns when DeepSeek balance <¥1 CNY.
 - 2025-07-10: Added hooks system (hooks.json + dispatch in agent.py). 6 events, shell handlers.
 - 2025-06-22 20:10: Enforced SSH-only git auth, added rules 7/8/9 (auto-blog, no-leak, backup), aipulse blog backup to GitHub.
 - 2025-06-22: Replaced sliding window with compression-based context. Token threshold: 60k. Keep recent: 24 messages.

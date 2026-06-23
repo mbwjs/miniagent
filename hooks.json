@@ -1,7 +1,13 @@
 {
   "_comment": "MiniAgent Hooks — shell commands triggered by lifecycle events. Exit code 2 = block.",
   "hooks": {
-    "SessionStart": [],
+    "SessionStart": [
+      {
+        "_comment": "Check DeepSeek balance on startup, warn if low",
+        "matcher": "",
+        "command": "cd /root/miniagent && python3 check_balance.py"
+      }
+    ],
     "SessionEnd": [],
     "UserPromptSubmit": [],
     "PreToolUse": [
