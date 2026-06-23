@@ -56,7 +56,7 @@ def _check_ssh_remote(path: Path, repo_name: str):
     except Exception:
         pass
 
-_check_ssh_remote(BLOG_DIR, "aipulse")
+_check_ssh_remote(BLOG_DIR, "~/aipulse")
 _check_ssh_remote(WORKDIR, "miniagent")
 
 # ── Hooks Engine ───────────────────────────────────────
